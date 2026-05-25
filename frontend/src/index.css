@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0e17;
+  --color-panel: #121826;
+  --color-panel2: #1a2233;
+  --color-line: #243049;
+  --color-muted: #8aa0bd;
+
+  --color-accent: #38bdf8;
+  --color-on: #22c55e;
+  --color-off: #64748b;
+  --color-warn: #f5b301;
+  --color-danger: #ef4444;
+  --color-update: #a855f7;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1100px 600px at 85% -15%, #16223e 0%, transparent 60%),
+    radial-gradient(900px 500px at -5% 110%, #11192c 0%, transparent 55%),
+    var(--color-bg);
+  color: #e6edf6;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3650;
+  border-radius: 8px;
+}
+
+@keyframes softpulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse {
+  animation: softpulse 2.4s ease-in-out infinite;
+}
