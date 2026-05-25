@@ -4,8 +4,7 @@ Selbst-gehostete, schlanke Admin-Oberfläche für deine **Shelly-Geräte** – k
 **lokal** und **cloudfrei**. Übersicht, Steuerung, Firmware-Updates und Geräte-Suche
 für Gen1 *und* Gen2/3/4 in einem Docker-Stack.
 
-> Schwesterprojekt zu [HomeDash](../homedash): gleiche Architektur (Node/Express +
-> React/Vite/Tailwind, Deployment via Docker Compose hinter nginx).
+> Architektur Node/Express + React/Vite/Tailwind, Deployment via Docker Compose hinter nginx.
 
 ## Funktionen
 
