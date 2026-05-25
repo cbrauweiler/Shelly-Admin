@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
-import { fetchState, fetchDevicesStatus, logout, type AppState } from './api'
+import {
+  fetchState,
+  fetchDevicesStatus,
+  logout,
+  type AppState,
+  type DeviceStatus,
+  type ControlMode,
+} from './api'
 import { Setup } from './components/Setup'
 import { Login } from './components/Login'
 import { DeviceList } from './components/DeviceList'
 import { AddDevices } from './components/AddDevices'
+import { BulkServicesDialog } from './components/BulkServicesDialog'
 import { AccountDialog } from './components/AccountDialog'
 import { Button } from './components/ui'
 import { fmtW } from './lib/format'
@@ -34,9 +42,26 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
   const qc = useQueryClient()
   const fetching = useIsFetching()
   const [adding, setAdding] = useState(false)
+  const [bulk, setBulk] = useState(false)
   const [account, setAccount] = useState(false)
   const [query, setQuery] = useState('')
   const [updatesOnly, setUpdatesOnly] = useState(false)
+  const [groupByTag, setGroupByTag] = useState<boolean>(() => localStorage.getItem('sa:groupByTag') === '1')
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(JSON.parse(localStorage.getItem('sa:collapsed') || '[]')),
+  )
+
+  useEffect(() => {
+    localStorage.setItem('sa:groupByTag', groupByTag ? '1' : '0')
+  }, [groupByTag])
+
+  const toggleCollapsed = (tag: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.has(tag) ? next.delete(tag) : next.add(tag)
+      localStorage.setItem('sa:collapsed', JSON.stringify([...next]))
+      return next
+    })
 
   const { data, isError } = useQuery({ queryKey: ['devices-status'], queryFn: fetchDevicesStatus })
   const devices = data?.devices ?? []
@@ -64,6 +89,8 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
       )
     })
   }, [devices, query, updatesOnly])
+
+  const groups = useMemo(() => groupDevicesByTag(filtered), [filtered])
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['devices-status'] })
 
@@ -95,6 +122,15 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
             <Button variant="primary" onClick={() => setAdding(true)}>
               + Geräte
             </Button>
+            {state.controlMode === 'full' && devices.length > 0 && (
+              <button
+                onClick={() => setBulk(true)}
+                title="Dienste für mehrere Geräte konfigurieren"
+                className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-panel/70 text-slate-300 transition hover:bg-panel2 hover:text-white"
+              >
+                🛠
+              </button>
+            )}
             <button
               onClick={refresh}
               title="Jetzt aktualisieren"
@@ -135,6 +171,15 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
             >
               Nur mit Update {stats.updates > 0 ? `(${stats.updates})` : ''}
             </button>
+            <button
+              onClick={() => setGroupByTag((v) => !v)}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                groupByTag ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line bg-panel2 text-muted hover:text-white'
+              }`}
+              title="Geräte nach (erstem) Tag gruppieren"
+            >
+              🏷 Nach Tag
+            </button>
           </div>
         )}
       </header>
@@ -144,6 +189,19 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
           <div className="rounded-2xl border border-danger/40 bg-danger/5 p-6 text-center text-danger">
             Verbindung zum Backend fehlgeschlagen.
           </div>
+        ) : groupByTag ? (
+          <div className="space-y-5">
+            {groups.map((g) => (
+              <GroupSection
+                key={g.tag}
+                group={g}
+                controlMode={state.controlMode}
+                onChanged={refresh}
+                collapsed={collapsed.has(g.tag)}
+                onToggle={() => toggleCollapsed(g.tag)}
+              />
+            ))}
+          </div>
         ) : (
           <DeviceList devices={filtered} controlMode={state.controlMode} onChanged={refresh} />
         )}
@@ -152,7 +210,59 @@ function Dashboard({ state, onLogout }: { state: AppState; onLogout: () => void 
       {adding && (
         <AddDevices defaultSubnet={state.defaultSubnet} onChanged={refresh} onClose={() => setAdding(false)} />
       )}
+      {bulk && <BulkServicesDialog devices={devices} onClose={() => setBulk(false)} />}
       {account && <AccountDialog onClose={() => setAccount(false)} />}
     </div>
+  )
+}
+
+type Group = { tag: string; devices: DeviceStatus[] }
+const NO_TAG = '— Ohne Tag —'
+
+/** Geräte nach ihrem ersten (primären) Tag gruppieren; ohne Tag ans Ende. */
+function groupDevicesByTag(devices: DeviceStatus[]): Group[] {
+  const map = new Map<string, DeviceStatus[]>()
+  for (const d of devices) {
+    const tag = d.tags?.[0]?.trim() || NO_TAG
+    if (!map.has(tag)) map.set(tag, [])
+    map.get(tag)!.push(d)
+  }
+  return [...map.entries()]
+    .map(([tag, list]) => ({ tag, devices: list }))
+    .sort((a, b) => {
+      if ((a.tag === NO_TAG) !== (b.tag === NO_TAG)) return a.tag === NO_TAG ? 1 : -1
+      return a.tag.localeCompare(b.tag, 'de')
+    })
+}
+
+function GroupSection({
+  group,
+  controlMode,
+  onChanged,
+  collapsed,
+  onToggle,
+}: {
+  group: Group
+  controlMode: ControlMode
+  onChanged: () => void
+  collapsed: boolean
+  onToggle: () => void
+}) {
+  const online = group.devices.filter((d) => d.online).length
+  const power = group.devices.reduce((sum, d) => sum + (d.status?.power_w ?? 0), 0)
+  return (
+    <section>
+      <button
+        onClick={onToggle}
+        className="mb-2 flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-panel2/40"
+      >
+        <span className="text-muted">{collapsed ? '▸' : '▾'}</span>
+        <h2 className="text-sm font-semibold uppercase tracking-wide">{group.tag}</h2>
+        <span className="text-xs text-muted">
+          · {online}/{group.devices.length} online · Σ {fmtW(power)}
+        </span>
+      </button>
+      {!collapsed && <DeviceList devices={group.devices} controlMode={controlMode} onChanged={onChanged} />}
+    </section>
   )
 }

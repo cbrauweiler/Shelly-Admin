@@ -68,7 +68,8 @@ export type Device = {
   auth: DeviceAuth
 }
 
-export type SwitchState = { id: number; on: boolean }
+export type SwitchType = 'switch' | 'light' | 'rgb' | 'rgbw' | 'cct' | 'white' | 'relay'
+export type SwitchState = { id: number; on: boolean; type?: SwitchType }
 
 export type LiveStatus = {
   online: boolean
@@ -79,7 +80,7 @@ export type LiveStatus = {
   ip: string | null
   uptime_s: number | null
   fw: string | null
-  update: { available: boolean; newVersion: string | null }
+  update: { available: boolean; newVersion: string | null; beta: string | null }
   voltage: number | null
   model?: string | null
 }
@@ -117,6 +118,8 @@ export const loginMfa = (code: string) => authPost<{ ok: boolean }>('/api/login/
 export const logout = () => fetch('/api/logout', { method: 'POST' })
 
 export const account = () => apiGet<{ username: string; mfaEnabled: boolean }>('/api/account')
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  apiSend<{ ok: boolean }>('/api/account/password', 'POST', { currentPassword, newPassword })
 export const beginMfa = () => apiSend<MfaProvisioning>('/api/mfa/begin', 'POST')
 export const enableMfa = (code: string) => apiSend<{ ok: boolean }>('/api/mfa/enable', 'POST', { code })
 export const disableMfa = (password: string) =>
@@ -130,17 +133,46 @@ export const addDevice = (host: string, name?: string, username?: string, passwo
 
 export const patchDevice = (
   id: string,
-  patch: { name?: string; tags?: string[]; username?: string; password?: string },
-) => apiSend<Device>(`/api/devices/${id}`, 'PATCH', patch)
+  patch: { name?: string; tags?: string[]; username?: string; password?: string; pushName?: boolean },
+) => apiSend<Device & { pushError?: string | null }>(`/api/devices/${id}`, 'PATCH', patch)
 
 export const deleteDevice = (id: string) => apiSend<{ ok: boolean }>(`/api/devices/${id}`, 'DELETE')
 
-export const setSwitch = (id: string, sw: number, on: boolean) =>
-  apiSend<{ ok: boolean }>(`/api/devices/${id}/switch`, 'POST', { id: sw, on })
+export const setSwitch = (id: string, sw: number, on: boolean, type?: SwitchType) =>
+  apiSend<{ ok: boolean }>(`/api/devices/${id}/switch`, 'POST', { id: sw, on, type })
 
 export const rebootDevice = (id: string) => apiSend<{ ok: boolean }>(`/api/devices/${id}/reboot`, 'POST')
 export const checkUpdate = (id: string) => apiSend<{ ok: boolean }>(`/api/devices/${id}/check-update`, 'POST')
-export const installUpdate = (id: string) => apiSend<{ ok: boolean }>(`/api/devices/${id}/update`, 'POST')
+export const installUpdate = (id: string, stage: 'stable' | 'beta' = 'stable') =>
+  apiSend<{ ok: boolean }>(`/api/devices/${id}/update`, 'POST', { stage })
+
+export type ServiceName = 'mqtt' | 'ble' | 'ap' | 'cloud'
+
+export type ServiceState = {
+  supported: boolean
+  enable?: boolean
+  server?: string
+  user?: string
+  clientId?: string
+  prefix?: string
+  rpcEnable?: boolean
+  ssid?: string
+  isOpen?: boolean
+  connected?: boolean
+}
+
+export type BulkResult = { id: string; name: string; ok: boolean; error?: string }
+
+export type DeviceServices = Record<ServiceName, ServiceState>
+
+export const getServices = (id: string) =>
+  apiGet<{ services: DeviceServices }>(`/api/devices/${id}/services`)
+
+export const setService = (id: string, service: ServiceName, config: Record<string, unknown>) =>
+  apiSend<{ ok: boolean; result: unknown }>(`/api/devices/${id}/services`, 'POST', { service, config })
+
+export const bulkSetService = (deviceIds: string[], service: ServiceName, config: Record<string, unknown>) =>
+  apiSend<{ results: BulkResult[] }>('/api/services/bulk', 'POST', { deviceIds, service, config })
 
 export const discover = (subnet: string) =>
   apiSend<{ scanned: number; found: Discovered[] }>('/api/discover', 'POST', { subnet })

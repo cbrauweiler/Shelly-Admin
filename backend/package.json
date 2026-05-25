@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon --legacy-watch --watch src --watch ../.env --ext js,json,env src/index.js"
+    "dev": "nodemon --legacy-watch --watch src --watch ../.env --ext js,json,env src/index.js",
+    "reset:admin": "node src/reset-admin.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

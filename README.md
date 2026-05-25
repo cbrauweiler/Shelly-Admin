@@ -14,8 +14,10 @@ für Gen1 *und* Gen2/3/4 in einem Docker-Stack.
   und Recovery-Codes.
 - **Geräteübersicht:** Modell, Generation, IP/MAC, Firmware, **„Update verfügbar"**,
   Online-Status, Live-Leistung, Temperatur, WLAN-Signal, Uptime, Zuletzt-gesehen.
-- **Steuerung (Voll-Admin):** Relais/Kanäle schalten, Neustart, Firmware-Update auslösen –
-  pro Gerät, direkt aus der Karte. (Abschaltbar via `CONTROL_MODE`.)
+- **Steuerung (Voll-Admin):** Relais/Kanäle (auch Licht/RGBW) schalten, Neustart,
+  Firmware-Update auslösen – pro Gerät, direkt aus der Karte. (Abschaltbar via `CONTROL_MODE`.)
+- **Dienste konfigurieren:** pro Gerät **MQTT**, **Bluetooth**, **Access Point** und
+  **Cloud** ein-/ausschalten und einstellen (Gen1 via `/settings`, Gen2+ via RPC-Config).
 - **Discovery:** ganzes `/24`-Subnetz parallel nach Shellys durchsuchen und gefundene
   Geräte per Klick übernehmen – oder manuell per IP/Hostname hinzufügen.
 - **Geräte-Authentifizierung:** unterstützt Shellys mit aktivem Login (HTTP **Digest**
@@ -115,6 +117,8 @@ siehe [DEPLOY-Synology.md](DEPLOY-Synology.md).
 | `POST /api/devices` · `PATCH/DELETE /api/devices/:id` | Gerät hinzufügen/ändern/entfernen |
 | `POST /api/devices/:id/switch` | Relais/Kanal schalten |
 | `POST /api/devices/:id/reboot` · `/update` · `/check-update` | Steuerung & Firmware |
+| `GET/POST /api/devices/:id/services` | Geräte-Dienste lesen/konfigurieren (MQTT/BLE/AP/Cloud) |
+| `POST /api/account/password` | Admin-Passwort ändern |
 | `POST /api/discover` | Subnetz nach Shellys durchsuchen |
 
 ## Sicherheit
@@ -125,6 +129,10 @@ siehe [DEPLOY-Synology.md](DEPLOY-Synology.md).
 - Geräte-Passwörter **AES-256-GCM-verschlüsselt** (Schlüssel aus dem Instanz-Secret).
 - Login-**Rate-Limiting** gegen Brute-Force.
 - Hinter einem HTTPS-Reverse-Proxy unbedingt `AUTH_COOKIE_SECURE=true` setzen.
+- **Passwort ändern:** im Web unter ⚙ → Konto & Sicherheit.
+- **Admin zurücksetzen** (Passwort/MFA vergessen) ohne Datenverlust:
+  `npm --prefix backend run reset:admin` bzw. `docker compose exec backend node src/reset-admin.js` –
+  setzt nur das Konto zurück, Geräteliste & Instanz-Secret bleiben erhalten.
 
 ## Hinweise & Grenzen
 

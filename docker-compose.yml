@@ -20,4 +20,4 @@ services:
     ports:
       # Web-GUI erreichbar unter http://<nas-ip>:8090
       # (8080 ist auf der NAS von HomeDash belegt, 8088 von InfluxDB)
-      - "8090:80"
+      - "8083:80"

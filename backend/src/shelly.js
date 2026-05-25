@@ -140,10 +140,19 @@ function statusGen1(s) {
     ip: s.wifi_sta?.ip ?? null,
     uptime_s: s.uptime ?? null,
     fw: upd.old_version ?? null,
-    update: { available: Boolean(upd.has_update), newVersion: upd.new_version ?? null },
+    // has_update = Stable verfuegbar; beta_version = neuere Beta (separat, nicht "available")
+    update: {
+      available: Boolean(upd.has_update),
+      newVersion: upd.new_version ?? null,
+      beta: upd.beta_version ?? null,
+    },
     voltage: meters[0]?.voltage ?? null,
   }
 }
+
+// Schaltbare Komponenten-Familien (Gen2+). RGBW/Dimmer melden statt "switch"
+// z. B. "light", "rgbw", "rgb", "cct", "white" – alle mit "output".
+const OUTPUT_TYPES = new Set(['switch', 'light', 'rgb', 'rgbw', 'cct', 'white'])
 
 function statusGen2(s) {
   const switches = []
@@ -151,19 +160,24 @@ function statusGen2(s) {
   let temp = null
   let voltage = null
   for (const [k, v] of Object.entries(s)) {
-    if (/^switch:\d+$/.test(k)) {
-      switches.push({ id: Number(k.split(':')[1]), on: Boolean(v.output) })
+    if (!v || typeof v !== 'object') continue
+    const [fam, idStr] = k.split(':')
+    if (OUTPUT_TYPES.has(fam) && idStr !== undefined) {
+      switches.push({ id: Number(idStr), on: Boolean(v.output), type: fam })
       if (typeof v.apower === 'number') power += v.apower
       if (v.temperature?.tC != null) temp = v.temperature.tC
       if (typeof v.voltage === 'number') voltage = v.voltage
-    } else if (/^(pm1|em1?):\d+$/.test(k)) {
+    } else if (fam === 'pm1' || fam === 'em' || fam === 'em1') {
       const p = v.apower ?? v.act_power ?? v.total_act_power
       if (typeof p === 'number') power += p
     }
   }
   const sys = s.sys || {}
   const upd = sys.available_updates || {}
-  const newVer = upd.stable?.version || upd.beta?.version || null
+  // Nur ein Stable-Update ist "verfuegbar" (wir aktualisieren standardmaessig auf Stable).
+  // Beta-Versionen werden separat gefuehrt (nur informativ / optional installierbar).
+  const stable = upd.stable?.version || null
+  const beta = upd.beta?.version || null
   return {
     online: true,
     power_w: round(power),
@@ -173,7 +187,7 @@ function statusGen2(s) {
     ip: s.wifi?.sta_ip ?? null,
     uptime_s: sys.uptime ?? null,
     fw: null,
-    update: { available: Boolean(newVer), newVersion: newVer },
+    update: { available: Boolean(stable), newVersion: stable, beta },
     voltage,
   }
 }
@@ -196,9 +210,20 @@ export async function getStatus(device, cred, timeoutMs) {
 
 // --- Steuerung --------------------------------------------------------------
 
-export function setSwitch(device, id, on, cred, timeoutMs) {
+// Komponenten-Familie -> passende RPC-Set-Methode (Gen2+).
+const SET_METHOD = {
+  switch: 'Switch.Set',
+  light: 'Light.Set',
+  rgb: 'RGB.Set',
+  rgbw: 'RGBW.Set',
+  cct: 'CCT.Set',
+  white: 'White.Set',
+}
+
+export function setSwitch(device, id, on, type, cred, timeoutMs) {
   if ((device.gen || 1) >= 2) {
-    return rpc(device.host, 'Switch.Set', { id: Number(id), on: Boolean(on) }, cred, timeoutMs)
+    const method = SET_METHOD[type] || 'Switch.Set'
+    return rpc(device.host, method, { id: Number(id), on: Boolean(on) }, cred, timeoutMs)
   }
   return request(device.host, { path: `/relay/${Number(id)}?turn=${on ? 'on' : 'off'}`, cred, timeoutMs })
 }
@@ -213,7 +238,141 @@ export function checkUpdate(device, cred, timeoutMs) {
   return request(device.host, { path: '/ota/check', cred, timeoutMs })
 }
 
-export function installUpdate(device, cred, timeoutMs) {
-  if ((device.gen || 1) >= 2) return rpc(device.host, 'Shelly.Update', { stage: 'stable' }, cred, timeoutMs)
-  return request(device.host, { path: '/ota?update=true', cred, timeoutMs })
+export function installUpdate(device, stage, cred, timeoutMs) {
+  const channel = stage === 'beta' ? 'beta' : 'stable'
+  if ((device.gen || 1) >= 2) {
+    return rpc(device.host, 'Shelly.Update', { stage: channel }, cred, timeoutMs)
+  }
+  return request(device.host, {
+    path: channel === 'beta' ? '/ota?beta=true' : '/ota?update=true',
+    cred,
+    timeoutMs,
+  })
+}
+
+// --- Dienste lesen/konfigurieren (MQTT, Bluetooth, Access Point, Cloud) -----
+
+const unsupported = { supported: false }
+
+/** Normalisierte Dienst-Konfiguration eines Geraets (Passwoerter werden nie zurueckgegeben). */
+export async function getServices(device, cred, timeoutMs) {
+  if ((device.gen || 1) >= 2) {
+    const [mqtt, ble, cloud, wifi] = await Promise.all([
+      rpc(device.host, 'MQTT.GetConfig', undefined, cred, timeoutMs).catch(() => null),
+      rpc(device.host, 'BLE.GetConfig', undefined, cred, timeoutMs).catch(() => null),
+      rpc(device.host, 'Cloud.GetConfig', undefined, cred, timeoutMs).catch(() => null),
+      rpc(device.host, 'WiFi.GetConfig', undefined, cred, timeoutMs).catch(() => null),
+    ])
+    return {
+      mqtt: mqtt
+        ? {
+            supported: true,
+            enable: !!mqtt.enable,
+            server: mqtt.server || '',
+            user: mqtt.user || '',
+            clientId: mqtt.client_id || '',
+            prefix: mqtt.topic_prefix || '',
+          }
+        : unsupported,
+      ble: ble
+        ? { supported: true, enable: !!ble.enable, rpcEnable: !!ble.rpc?.enable }
+        : unsupported,
+      ap: wifi?.ap
+        ? { supported: true, enable: !!wifi.ap.enable, ssid: wifi.ap.ssid || '', isOpen: !!wifi.ap.is_open }
+        : unsupported,
+      cloud: cloud ? { supported: true, enable: !!cloud.enable, server: cloud.server || '' } : unsupported,
+    }
+  }
+
+  // Gen1: alles in /settings
+  const s = await request(device.host, { path: '/settings', cred, timeoutMs })
+  return {
+    mqtt: s.mqtt
+      ? {
+          supported: true,
+          enable: !!s.mqtt.enable,
+          server: s.mqtt.server || '',
+          user: s.mqtt.user || '',
+          clientId: s.mqtt.id || '',
+          prefix: s.mqtt.id || '', // Gen1: die ID ist zugleich das Topic-Prefix
+        }
+      : unsupported,
+    ble: unsupported, // Gen1 hat kein Bluetooth
+    ap: s.wifi_ap
+      ? { supported: true, enable: !!s.wifi_ap.enabled, ssid: s.wifi_ap.ssid || '', isOpen: !s.wifi_ap.key }
+      : unsupported,
+    cloud: s.cloud
+      ? { supported: true, enable: !!s.cloud.enabled, connected: !!s.cloud.connected }
+      : unsupported,
+  }
+}
+
+const qs = (obj) => '?' + new URLSearchParams(obj).toString()
+
+/** Einen Dienst konfigurieren. patch je Dienst, Passwoerter optional (nur bei Aenderung). */
+export async function setService(device, service, patch, cred, timeoutMs) {
+  const gen2 = (device.gen || 1) >= 2
+  const enable = !!patch.enable
+
+  if (service === 'mqtt') {
+    if (gen2) {
+      const config = { enable }
+      if (patch.server !== undefined) config.server = patch.server || null
+      if (patch.user !== undefined) config.user = patch.user || null
+      if (patch.password) config.pass = patch.password
+      if (patch.clientId) config.client_id = patch.clientId
+      if (patch.prefix !== undefined) config.topic_prefix = patch.prefix || null
+      return rpc(device.host, 'MQTT.SetConfig', { config }, cred, timeoutMs)
+    }
+    const p = { mqtt_enable: String(enable) }
+    if (patch.server !== undefined) p.mqtt_server = patch.server
+    if (patch.user !== undefined) p.mqtt_user = patch.user
+    if (patch.password) p.mqtt_pass = patch.password
+    // Gen1: Topic-Prefix == Geraete-ID (mqtt_id)
+    const gen1Id = patch.prefix ?? patch.clientId
+    if (gen1Id !== undefined) p.mqtt_id = gen1Id
+    return request(device.host, { path: '/settings/mqtt' + qs(p), cred, timeoutMs })
+  }
+
+  if (service === 'cloud') {
+    if (gen2) {
+      const config = { enable }
+      if (patch.server) config.server = patch.server
+      return rpc(device.host, 'Cloud.SetConfig', { config }, cred, timeoutMs)
+    }
+    return request(device.host, { path: '/settings/cloud' + qs({ enabled: String(enable) }), cred, timeoutMs })
+  }
+
+  if (service === 'ap') {
+    if (gen2) {
+      const ap = { enable }
+      if (patch.ssid) ap.ssid = patch.ssid
+      if (patch.password) {
+        ap.pass = patch.password
+        ap.is_open = false
+      }
+      return rpc(device.host, 'WiFi.SetConfig', { config: { ap } }, cred, timeoutMs)
+    }
+    const p = { enabled: String(enable) }
+    if (patch.ssid) p.ssid = patch.ssid
+    if (patch.password) p.key = patch.password
+    return request(device.host, { path: '/settings/ap' + qs(p), cred, timeoutMs })
+  }
+
+  if (service === 'ble') {
+    if (!gen2) throw new Error('Bluetooth wird von Gen1-Geraeten nicht unterstuetzt.')
+    const config = { enable }
+    if (patch.rpcEnable !== undefined) config.rpc = { enable: !!patch.rpcEnable }
+    return rpc(device.host, 'BLE.SetConfig', { config }, cred, timeoutMs)
+  }
+
+  throw new Error('Unbekannter Dienst: ' + service)
+}
+
+/** Setzt den Geraete-Namen am Geraet selbst (Gen2: Sys.SetConfig, Gen1: /settings?name=). */
+export function setName(device, name, cred, timeoutMs) {
+  if ((device.gen || 1) >= 2) {
+    return rpc(device.host, 'Sys.SetConfig', { config: { device: { name: name || null } } }, cred, timeoutMs)
+  }
+  return request(device.host, { path: '/settings' + qs({ name: name || '' }), cred, timeoutMs })
 }

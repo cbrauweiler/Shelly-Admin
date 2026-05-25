@@ -14,6 +14,7 @@ import {
   loginMfaHandler,
   logoutHandler,
   accountHandler,
+  changePasswordHandler,
   beginMfaHandler,
   enableMfaHandler,
   disableMfaHandler,
@@ -86,6 +87,7 @@ app.post('/api/logout', logoutHandler)
 app.use('/api', requireAuth)
 
 app.get('/api/account', accountHandler)
+app.post('/api/account/password', wrap(changePasswordHandler))
 app.post('/api/mfa/begin', wrap(beginMfaHandler))
 app.post('/api/mfa/enable', wrap(enableMfaHandler))
 app.post('/api/mfa/disable', wrap(disableMfaHandler))
@@ -159,8 +161,21 @@ app.patch(
       d.auth.username = req.body.username || 'admin'
     }
 
+    // Optional: Anzeigename auch auf dem Geraet als dessen Name setzen (best effort).
+    let pushError = null
+    if (req.body?.pushName) {
+      if (!canControl()) pushError = 'Steuerung deaktiviert (CONTROL_MODE).'
+      else {
+        try {
+          await shelly.setName(d, d.name, credFor(d), config.deviceTimeoutMs)
+        } catch (e) {
+          pushError = String(e?.message ?? e)
+        }
+      }
+    }
+
     await persist()
-    res.json(publicDevice(d))
+    res.json({ ...publicDevice(d), pushError })
   }),
 )
 
@@ -227,7 +242,7 @@ app.post(
   wrap(async (req, res) => {
     const d = findDevice(req.params.id)
     if (!d) return res.status(404).json({ error: 'Geraet nicht gefunden.' })
-    const out = await shelly.setSwitch(d, req.body?.id ?? 0, !!req.body?.on, credFor(d), config.deviceTimeoutMs)
+    const out = await shelly.setSwitch(d, req.body?.id ?? 0, !!req.body?.on, req.body?.type, credFor(d), config.deviceTimeoutMs)
     res.json({ ok: true, result: out })
   }),
 )
@@ -260,8 +275,56 @@ app.post(
   wrap(async (req, res) => {
     const d = findDevice(req.params.id)
     if (!d) return res.status(404).json({ error: 'Geraet nicht gefunden.' })
-    const out = await shelly.installUpdate(d, credFor(d), config.deviceTimeoutMs)
+    const out = await shelly.installUpdate(d, req.body?.stage, credFor(d), config.deviceTimeoutMs)
     res.json({ ok: true, result: out })
+  }),
+)
+
+// --- Geraete-Dienste lesen (MQTT, Bluetooth, Access Point, Cloud) ----------
+app.get(
+  '/api/devices/:id/services',
+  wrap(async (req, res) => {
+    const d = findDevice(req.params.id)
+    if (!d) return res.status(404).json({ error: 'Geraet nicht gefunden.' })
+    const services = await shelly.getServices(d, credFor(d), config.deviceTimeoutMs)
+    res.json({ services })
+  }),
+)
+
+// --- Geraete-Dienst konfigurieren ------------------------------------------
+const SERVICES = ['mqtt', 'ble', 'ap', 'cloud']
+app.post(
+  '/api/devices/:id/services',
+  needControl,
+  wrap(async (req, res) => {
+    const d = findDevice(req.params.id)
+    if (!d) return res.status(404).json({ error: 'Geraet nicht gefunden.' })
+    const service = req.body?.service
+    if (!SERVICES.includes(service)) return res.status(400).json({ error: 'Unbekannter Dienst.' })
+    const result = await shelly.setService(d, service, req.body?.config ?? {}, credFor(d), config.deviceTimeoutMs)
+    res.json({ ok: true, result })
+  }),
+)
+
+// --- Massenaktion: einen Dienst auf vielen Geraeten konfigurieren ----------
+app.post(
+  '/api/services/bulk',
+  needControl,
+  wrap(async (req, res) => {
+    const service = req.body?.service
+    if (!SERVICES.includes(service)) return res.status(400).json({ error: 'Unbekannter Dienst.' })
+    const ids = Array.isArray(req.body?.deviceIds) ? req.body.deviceIds : []
+    const cfg = req.body?.config ?? {}
+    const targets = getDb().devices.filter((d) => ids.includes(d.id))
+    const results = await pool(targets, 8, async (d) => {
+      try {
+        await shelly.setService(d, service, cfg, credFor(d), config.deviceTimeoutMs)
+        return { id: d.id, name: d.name, ok: true }
+      } catch (e) {
+        return { id: d.id, name: d.name, ok: false, error: String(e?.message ?? e) }
+      }
+    })
+    res.json({ results })
   }),
 )
 

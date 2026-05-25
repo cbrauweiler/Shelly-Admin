@@ -8,6 +8,10 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "composite": true,
+    // composite verlangt Emit; Ausgabe nach node_modules lenken, damit keine
+    // veraltete vite.config.js im Projekt-Root die vite.config.ts ueberschattet.
+    "outDir": "./node_modules/.tmp/tsnode",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true

@@ -10,9 +10,10 @@ export default defineConfig({
     // daher Polling fuer zuverlaessiges HMR.
     watch: { usePolling: true, interval: 400 },
     proxy: {
-      // Im Dev-Betrieb laeuft das Backend separat auf :3000
+      // Im Dev-Betrieb laeuft das Backend separat (Standard :3000).
+      // Per BACKEND_URL ueberschreibbar, falls 3000 belegt ist.
       '/api': {
-        target: 'http://localhost:3000',
+        target: process.env.BACKEND_URL || 'http://localhost:3000',
         changeOrigin: true,
       },
     },

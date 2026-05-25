@@ -171,6 +171,25 @@ export function accountHandler(_req, res) {
   res.json({ username: admin().username, mfaEnabled: mfaEnabled() })
 }
 
+/** Passwort aendern (aktuelles Passwort erforderlich). */
+export async function changePasswordHandler(req, res) {
+  const a = admin()
+  const { currentPassword = '', newPassword = '' } = req.body ?? {}
+  if (!verifyPassword(currentPassword, a.passHash, a.passSalt)) {
+    return res.status(401).json({ error: 'Aktuelles Passwort falsch.' })
+  }
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'Neues Passwort: mindestens 8 Zeichen.' })
+  }
+  const { hash, salt } = hashPassword(newPassword)
+  await update((db) => {
+    db.admin.passHash = hash
+    db.admin.passSalt = salt
+  })
+  // Session bleibt gueltig (Signatur haengt am Instanz-Secret, nicht am Passwort).
+  res.json({ ok: true })
+}
+
 // --- Login -----------------------------------------------------------------
 
 export function loginHandler(req, res) {

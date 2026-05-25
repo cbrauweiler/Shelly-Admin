@@ -60,8 +60,20 @@ Quellen ersetzen (z. B. neu nach `/volume1/docker/shelly-admin` kopieren), dann:
 GUI → Projekt → **Aktion → Erstellen/Neu aufbauen**, oder per SSH
 `sudo docker compose up -d --build`. Die `data/`-Inhalte bleiben erhalten.
 
-## Passwort/MFA vergessen?
+## Passwort ändern / MFA verwalten
 
-Login-Daten liegen ausschließlich in `data/shelly-admin.json`. Notfalls den `"admin"`-Block
-in dieser Datei auf `null` setzen (oder die Datei löschen) und neu einrichten – die
-Geräteliste geht beim Löschen der Datei allerdings mit verloren.
+Im Web: oben rechts **⚙ → Konto & Sicherheit** → „Passwort → Ändern" bzw. MFA
+aktivieren/deaktivieren.
+
+## Passwort/MFA vergessen? Admin zurücksetzen (ohne Datenverlust)
+
+Setzt **nur** das Admin-Konto zurück; Geräteliste und Instanz-Secret (und damit die
+verschlüsselten Geräte-Passwörter) bleiben erhalten. Beim nächsten WebGUI-Aufruf läuft
+der Einrichtungs-Assistent erneut.
+
+```bash
+sudo docker compose exec backend node src/reset-admin.js
+# oder lokal:  npm --prefix backend run reset:admin
+```
+
+Nur als letzte Option: `data/shelly-admin.json` löschen – dabei geht die Geräteliste verloren.

@@ -10,6 +10,7 @@ import {
   type ControlMode,
 } from '../api'
 import { Modal, Button, Field, inputClass, ErrorText } from './ui'
+import { ServicesDialog } from './ServicesDialog'
 import { fmtW, fmtTemp, fmtVolt, fmtUptime, fmtRelative, rssiBars, genLabel } from '../lib/format'
 
 export function DeviceList({
@@ -81,6 +82,7 @@ function DeviceCard({
 }) {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [showServices, setShowServices] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const canControl = controlMode === 'full'
   const canUpdate = controlMode !== 'monitor'
@@ -107,8 +109,28 @@ function DeviceCard({
           <div className="min-w-0">
             <div className="truncate font-semibold leading-tight">{d.name}</div>
             <div className="truncate text-xs text-muted">
-              {s?.ip || d.host} · {genLabel(d.gen)} · {s?.model || d.model || '?'}
+              <a
+                href={`http://${s?.ip || d.host}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-muted transition hover:text-accent hover:underline"
+                title="Web-Interface des Shelly öffnen"
+              >
+                {s?.ip || d.host}
+              </a>
+              {' · '}
+              {genLabel(d.gen)} · {s?.model || d.model || '?'}
             </div>
+            {d.tags?.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {d.tags.map((t) => (
+                  <span key={t} className="rounded-full border border-line bg-panel2 px-1.5 py-0.5 text-[10px] text-muted">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -122,6 +144,13 @@ function DeviceCard({
               <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-line bg-panel2 text-sm shadow-xl">
                 <button className="block w-full px-3 py-2 text-left hover:bg-line" onClick={() => { setEditing(true); setMenu(false) }}>
                   ✏️ Bearbeiten
+                </button>
+                <button
+                  className="block w-full px-3 py-2 text-left hover:bg-line disabled:opacity-50"
+                  disabled={!d.online}
+                  onClick={() => { setShowServices(true); setMenu(false) }}
+                >
+                  🔧 Dienste
                 </button>
                 {canControl && (
                   <button
@@ -139,6 +168,18 @@ function DeviceCard({
                     onClick={() => run('check', () => checkUpdate(d.id))}
                   >
                     🔍 Auf Update prüfen
+                  </button>
+                )}
+                {canUpdate && s?.update.beta && (
+                  <button
+                    className="block w-full px-3 py-2 text-left hover:bg-line disabled:opacity-50"
+                    disabled={busy === 'beta' || !d.online}
+                    onClick={() => {
+                      if (confirm(`Auf Beta-Version ${s?.update.beta} aktualisieren? (Beta-Kanal)`))
+                        run('beta', () => installUpdate(d.id, 'beta'))
+                    }}
+                  >
+                    🧪 Auf Beta {s.update.beta}
                   </button>
                 )}
                 <button
@@ -173,22 +214,25 @@ function DeviceCard({
           {/* Schalter */}
           {s.switches.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {s.switches.map((sw) => (
-                <button
-                  key={sw.id}
-                  disabled={!canControl || busy === `sw${sw.id}`}
-                  onClick={() => run(`sw${sw.id}`, () => setSwitch(d.id, sw.id, !sw.on))}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed ${
-                    sw.on
-                      ? 'border-on/40 bg-on/15 text-on'
-                      : 'border-line bg-panel2 text-muted'
-                  } ${canControl ? 'hover:brightness-125' : 'opacity-90'}`}
-                  title={canControl ? 'Umschalten' : 'Nur-Lese-Modus'}
-                >
-                  <span className={`inline-block h-2 w-2 rounded-full ${sw.on ? 'bg-on' : 'bg-off'}`} />
-                  {s.switches.length > 1 ? `Kanal ${sw.id + 1}` : 'Relais'} · {sw.on ? 'AN' : 'AUS'}
-                </button>
-              ))}
+              {s.switches.map((sw) => {
+                const key = `${sw.type ?? 'switch'}-${sw.id}`
+                const isLight = sw.type != null && sw.type !== 'switch' && sw.type !== 'relay'
+                const label = s.switches.length > 1 ? `${isLight ? '💡' : ''} Kanal ${sw.id + 1}` : isLight ? '💡 Licht' : 'Relais'
+                return (
+                  <button
+                    key={key}
+                    disabled={!canControl || busy === key}
+                    onClick={() => run(key, () => setSwitch(d.id, sw.id, !sw.on, sw.type))}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed ${
+                      sw.on ? 'border-on/40 bg-on/15 text-on' : 'border-line bg-panel2 text-muted'
+                    } ${canControl ? 'hover:brightness-125' : 'opacity-90'}`}
+                    title={canControl ? 'Umschalten' : 'Nur-Lese-Modus'}
+                  >
+                    <span className={`inline-block h-2 w-2 rounded-full ${sw.on ? 'bg-on' : 'bg-off'}`} />
+                    {label.trim()} · {sw.on ? 'AN' : 'AUS'}
+                  </button>
+                )
+              })}
             </div>
           )}
 
@@ -226,12 +270,16 @@ function DeviceCard({
       </div>
 
       {editing && <EditDialog d={d} onClose={() => setEditing(false)} onSaved={onChanged} />}
+      {showServices && (
+        <ServicesDialog deviceId={d.id} deviceName={d.name} canControl={canControl} onClose={() => setShowServices(false)} />
+      )}
     </div>
   )
 }
 
 function EditDialog({ d, onClose, onSaved }: { d: DeviceStatus; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(d.name)
+  const [pushName, setPushName] = useState(false)
   const [tags, setTags] = useState((d.tags ?? []).join(', '))
   const [username, setUsername] = useState(d.auth?.username ?? '')
   const [password, setPassword] = useState('')
@@ -243,17 +291,25 @@ function EditDialog({ d, onClose, onSaved }: { d: DeviceStatus; onClose: () => v
     setBusy(true)
     setError('')
     try {
-      const patch: { name?: string; tags?: string[]; username?: string; password?: string } = {
+      const patch: {
+        name?: string
+        tags?: string[]
+        username?: string
+        password?: string
+        pushName?: boolean
+      } = {
         name: name.trim(),
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       }
+      if (pushName) patch.pushName = true
       if (removeAuth) patch.password = ''
       else if (password) {
         patch.password = password
         patch.username = username || 'admin'
       } else if (username && d.auth?.enabled) patch.username = username
-      await patchDevice(d.id, patch)
+      const res = await patchDevice(d.id, patch)
       onSaved()
+      if (res.pushError) alert(`Hinweis: Gerätename konnte nicht gesetzt werden – ${res.pushError}`)
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Speichern fehlgeschlagen')
@@ -266,6 +322,10 @@ function EditDialog({ d, onClose, onSaved }: { d: DeviceStatus; onClose: () => v
       <Field label="Anzeigename">
         <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
+      <label className="mb-3 -mt-1 flex items-center gap-2 text-xs text-muted">
+        <input type="checkbox" checked={pushName} onChange={(e) => setPushName(e.target.checked)} />
+        Diesen Namen auch auf dem Gerät selbst setzen
+      </label>
       <Field label="Tags / Raum (Komma-getrennt)">
         <input className={inputClass} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="z. B. Küche, Licht" />
       </Field>
