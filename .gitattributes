@@ -1,2 +1,12 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Repo wird auf dem NAS (Linux) von Portainer geklont und gebaut.
+# Daher alle Textdateien deterministisch mit LF speichern/auschecken.
+* text=auto eol=lf
+
+# Binaerdateien unangetastet lassen
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

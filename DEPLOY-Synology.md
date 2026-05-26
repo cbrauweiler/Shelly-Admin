@@ -1,9 +1,9 @@
 # Shelly-Admin auf Synology (Container Manager)
 
 Projektpfad auf der NAS: `/volume1/docker/shelly-admin`
-WebGUI nach dem Start: **http://<nas-ip>:8090**
+WebGUI nach dem Start: **http://<nas-ip>:8083**
 
-> Port **8090**, weil **8080** von HomeDash und **8088** von InfluxDB belegt sind.
+> Port **8083**, weil **8080** von HomeDash und **8088** von InfluxDB belegt sind.
 > Bei Bedarf in `docker-compose.yml` beim `frontend` die linke Zahl ändern.
 
 ## 1. `.env` vorbereiten
@@ -26,7 +26,7 @@ Das Admin-Konto wird **nicht** hier gesetzt, sondern beim ersten WebGUI-Aufruf a
 4. Quelle: **„Vorhandene docker-compose.yml verwenden"** → Weiter.
 5. Build/Start bestätigen. Beim ersten Mal werden zwei Images gebaut
    (Backend + Frontend) – das dauert auf schwächeren NAS-CPUs ein paar Minuten.
-6. Aufrufen: **http://<nas-ip>:8090** → Erst-Setup durchlaufen.
+6. Aufrufen: **http://<nas-ip>:8083** → Erst-Setup durchlaufen.
 
 ## 2. Methode B — SSH
 
@@ -41,7 +41,7 @@ sudo docker compose up -d --build
 ```bash
 sudo docker compose ps
 sudo docker compose logs -f backend
-curl http://localhost:8090/api/health     # {"ok":true}
+curl http://localhost:8083/api/health     # {"ok":true}
 ```
 
 ## Stolpersteine
@@ -49,7 +49,7 @@ curl http://localhost:8090/api/health     # {"ok":true}
 - **Geräte werden beim Scan nicht gefunden?** Der Backend-Container muss die LAN-IPs
   der Shellys erreichen. Im Standard-Bridge-Netz klappt der ausgehende HTTP-Zugriff;
   prüfe Firewall/VLAN-Trennung zwischen NAS und Geräten.
-- **Port 8090 belegt?** Linke Zahl im `frontend`-Port ändern (z. B. `8091:80`), Projekt neu starten.
+- **Port 8083 belegt?** Linke Zahl im `frontend`-Port ändern (z. B. `8084:80`), Projekt neu starten.
 - **Daten weg nach Update?** Der Ordner `./data` ist als Volume gemountet und bleibt
   erhalten. Nicht löschen – er enthält Admin-Konto, Geräteliste und das Instanz-Secret.
 - **Autostart:** durch `restart: unless-stopped` startet der Stack nach NAS-Reboot von selbst.
