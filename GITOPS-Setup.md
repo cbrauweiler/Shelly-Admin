@@ -122,9 +122,11 @@ Cache), gibt es zwei Absicherungen:
   sudo docker compose up -d --build
   ```
 
-Das benannte Volume `shelly-admin-data` bleibt bei jedem Rebuild/Redeploy erhalten
-(Admin-Konto, Geraeteliste, Instanz-Secret) — es liegt bewusst NICHT im geklonten
-Stack-Verzeichnis. Beim ersten Einrichten einmal bewusst eine sichtbare Mini-Aenderung
+Das feste NAS-Verzeichnis `/volume2/docker/shelly-admin` (als `/data` gemountet) bleibt
+bei jedem Rebuild/Redeploy erhalten (Admin-Konto, Geraeteliste, Instanz-Secret) — es
+liegt bewusst NICHT im geklonten Stack-Verzeichnis und muss vor dem ersten Start
+existieren (`sudo mkdir -p /volume2/docker/shelly-admin`). Beim ersten Einrichten einmal
+bewusst eine sichtbare Mini-Aenderung
 pushen und pruefen, ob sie nach dem Redeploy im Browser ankommt — dann weisst du, ob
 Polling/Rebuild sauber durchlaeuft.
 

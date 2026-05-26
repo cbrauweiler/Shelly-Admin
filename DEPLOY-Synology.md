@@ -50,16 +50,17 @@ curl http://localhost:8083/api/health     # {"ok":true}
   der Shellys erreichen. Im Standard-Bridge-Netz klappt der ausgehende HTTP-Zugriff;
   prüfe Firewall/VLAN-Trennung zwischen NAS und Geräten.
 - **Port 8083 belegt?** Linke Zahl im `frontend`-Port ändern (z. B. `8084:80`), Projekt neu starten.
-- **Daten weg nach Update?** Die Persistenz liegt im benannten Docker-Volume
-  `shelly-admin-data` (nicht in einem Ordner im Projektpfad) und bleibt über Updates
-  und Redeploys erhalten – es enthält Admin-Konto, Geräteliste und das Instanz-Secret.
+- **Daten weg nach Update?** Die Persistenz liegt im festen NAS-Verzeichnis
+  `/volume2/docker/shelly-admin` (als `/data` gemountet) und bleibt über Updates und
+  Redeploys erhalten – es enthält Admin-Konto, Geräteliste und das Instanz-Secret.
+  Vor dem ersten Start anlegen: `sudo mkdir -p /volume2/docker/shelly-admin`.
 - **Autostart:** durch `restart: unless-stopped` startet der Stack nach NAS-Reboot von selbst.
 
 ## Aktualisieren
 
 Quellen ersetzen (z. B. neu nach `/volume1/docker/shelly-admin` kopieren), dann:
 GUI → Projekt → **Aktion → Erstellen/Neu aufbauen**, oder per SSH
-`sudo docker compose up -d --build`. Das Volume `shelly-admin-data` bleibt erhalten.
+`sudo docker compose up -d --build`. `/volume2/docker/shelly-admin` bleibt erhalten.
 
 ## Passwort ändern / MFA verwalten
 
@@ -77,6 +78,6 @@ sudo docker compose exec backend node src/reset-admin.js
 # oder lokal:  npm --prefix backend run reset:admin
 ```
 
-Nur als letzte Option (Geräteliste geht verloren): die JSON-DB im Volume löschen, z. B.
-`sudo docker compose exec backend rm /data/shelly-admin.json`, oder das ganze Volume
-entfernen (`docker volume rm <projekt>_shelly-admin-data`).
+Nur als letzte Option (Geräteliste geht verloren): die JSON-DB löschen –
+`sudo docker compose exec backend rm /data/shelly-admin.json` bzw. direkt auf der NAS
+`/volume2/docker/shelly-admin/shelly-admin.json`.
