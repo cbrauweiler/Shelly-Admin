@@ -24,8 +24,11 @@ services:
     expose:
       - "3000"
     volumes:
-      # Persistenz (Admin-Konto, Geraeteliste, Instanz-Secret). Bleibt ueber Updates erhalten.
-      - ./data:/data
+      # Benanntes Volume statt Bind-Mount (./data): Bei Portainer-GitOps liegt das
+      # Klon-Verzeichnis unter /data/compose/<id> und wird bei jedem Update neu geklont
+      # -> ein Bind-Mount dorthin existiert nicht bzw. ginge bei jedem Redeploy verloren.
+      # Das benannte Volume persistiert unabhaengig davon (Admin-Konto, Geraeteliste, Secret).
+      - shelly-admin-data:/data
 
   frontend:
     build: ./frontend
@@ -36,3 +39,6 @@ services:
       # Web-GUI erreichbar unter http://<nas-ip>:8083
       # (8080 ist auf der NAS von HomeDash belegt, 8088 von InfluxDB)
       - "8083:80"
+
+volumes:
+  shelly-admin-data:

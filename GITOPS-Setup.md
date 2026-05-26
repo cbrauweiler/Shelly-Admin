@@ -122,8 +122,9 @@ Cache), gibt es zwei Absicherungen:
   sudo docker compose up -d --build
   ```
 
-Das `./data`-Volume bleibt bei jedem Rebuild erhalten (Admin-Konto, Geraeteliste,
-Instanz-Secret). Beim ersten Einrichten einmal bewusst eine sichtbare Mini-Aenderung
+Das benannte Volume `shelly-admin-data` bleibt bei jedem Rebuild/Redeploy erhalten
+(Admin-Konto, Geraeteliste, Instanz-Secret) — es liegt bewusst NICHT im geklonten
+Stack-Verzeichnis. Beim ersten Einrichten einmal bewusst eine sichtbare Mini-Aenderung
 pushen und pruefen, ob sie nach dem Redeploy im Browser ankommt — dann weisst du, ob
 Polling/Rebuild sauber durchlaeuft.
 
